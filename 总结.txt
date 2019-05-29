@@ -1,0 +1,182 @@
+  
+ 一、Nio与Netty
+
+    ● Reactor模式的角色构成（Reactor模式一共有5种角色构成）
+	1.Handler（句柄或描述符）：本质上表示一种资源，是由操作系统提供的，该资源用于表示一个个的事件，比如说文件描述符，或是针对网络编程中的Socket描述符。事件既可以来自外部，也可以来自内部；外部事件比如说客户端的连接请求，客户端发送过来数据等；
+内部事件比如操作系统产生的定时器事件等。它本质上就是一个文件描述符。Handle是事件产生的发源地。
+	2.Synchronous Event Demultiplexer(同步事件分离器）：它本身是一个系统调用，用于等待事件的发生（事件可能是一个，也可能是多个）。调用方在调用它的时候会被阻塞，一直阻塞到同步事件分离器上有事件产生为止。对于Linux来说。同步事件分离器指的就是常用的I/O多路复用机制，比如说select，poll，epoll等。在Java NIO领域中，同步时间分离器对应的组件就是Selector；对应的阻塞方法就是select方法。
+	3.Event Handler（事件处理器）：本身由多个回调方法构成，这些回调方法构成了与应用相关的对于某个事件的反馈机制。Netty相比于Java NIO来说，在事件处理器这个角色上进行了升级，它为我们开发者提供了大量的回调方法，供我们在特定事件产生时实现相应的回调方法进行业务逻辑的处理。
+	4.Concreate Event Handler（具体事件处理器）：是事件处理器的实现。它本身实现了事件处理器所提供的各个回调方法，从而实现了特性于业务的逻辑。它本质上就是我们所编写的一个个的处理器实现
+	5。Initiation Dispatcher（初始分发器）：实际上就是Reactor角色。它本身定义了规范，这些规范用于控制事件的调度方式，同时又提供了应用进行事件处理器的注册、删除等设施。它本身是整个事件处理器的核心所在，Initiation Dispatcher会通过同步事件分离器来等待事件的发生。一旦事件发生，Initiation Dispatcher首先会分离出每一个事件，然后调用事件处理器，最后调用相关的回调方法来处理这些事件。
+
+    ● Reactor模式的流程
+	1.当应用向Initiatioon Dispatcher注册具体的事件处理器时，应用会标记处该事件处理器希望Initiation Dispatcher在某个事件发生向其通知的该事件，该事件与Handle关联。
+	2.Initiation Dispatcher会要求每个事件处理器向其传递内部的Handle。该Handle向操作系统标识了事件处理器。
+	3.当所有的事件处理器注册完毕后，应用会调用handle_events方法来启动Initiation Dispatcher的事件循环。这时，Initiation Dispatcher会将每个注册的事件管理器的Handle合并起来，并使用同步事件分离器等待这些事件的发生。比如说，TCP协议层会使用select同步事件分离器操作来等待客户端发送的数据到达连接的socket handle上。
+	4.当与某个事件源对应的Handle变为ready状态时（比如说，TCP socket变为等待读状态），同步事件分离器就会通知Initiation Dispatcher。
+	5.Initiation Dispatcher会触发事件处理器的回调方法，从而响应这个处与ready状态的Handle。当事件发生时，Initiattion Dispatcher会将被事件源激活的Handle作为[key]来寻找并分发恰当的事件处理器回调方法。
+	6.Initiation Dispatcher会回调事件处理器的handle_events回调方法来执行特定于应用的功能（开发者自己所编写的功能），从而响应这个事件。所发生的事件类型可以作为该方法参数并被该方法内部使用来执行额外的特定于服务的分离与分发。
+
+    ● Netty初始化流程：当服务端创建Channel的时候，会立刻创建一个与之对应ChannelPipelin对象,Channel和ChannelPipeline创建好就会建立二者的关联关系，并且关联关系在整个Channel生命周期不会发生改变且Channel与CHannelPipeline关系是一对一的, 同时双向链表结构的ChannelPipeline里维护着ChannelHandlerContext和ChannelHandler，创建ChannelHandlerContext同时还创建与其对应ChannelHandler，ChannelHandlerContext里可以引用到对应ChannelHandler对象，因此ChannelHandlerContext是连接CHannelPipeline与ChannelHandler的桥梁（纽带）,ChannelHandler里面分为入站（ChannelInboundHandler）和出站（ChannelOutboundHandler），入站即从外部进入程序当中，出站即程序发出到外部，且入站与出站相互独立，互不影响，关联关系建立即连接建立好，当一个数据从外界进来，Netty会检查pipeline当中每一个ChannelHandler，判断ChannelHandler是不是InboundHandler（使用instanceof判断），如果是出站的就转向下一个处理器，以此类推，总之入站和出站是分开了，这一点和Serverlet中的filter和Struts2或者Springmvc中的interceptor有相似的地方，但区别也非常明显，filter和interceptor即进和出都经过同一个过滤器（拦截器），而对于Handler来说入站数据不会流经OutboundHandler，出站数据不会流经InboundHandler即两者独立。
+
+    Netty注册流程（RoundRobin算法运用）：
+	1.一个EventLoopGroup当中会包含一个或多个EventLoop。
+	2.一个EventLoop在它的整个生命周期当中都只会与唯一一个Thread进行绑定
+	3.所有由EventLoop所处理的各种I/O事件都将在它所关联的那个Thread上进行处理。
+	4.一个Channel在它的整个生命周期中只会注册在一个EventLoop上。
+	5.一个EventLoop在运行过程当中，会被分配给一个或者多个Channel（EventLoop对应多个Channel，一对多）。
+    重要结论：在Netty中，Channel的实现一定是线程安全的；基于此，我们可以存储一个Channel的引用，并且在需要向远程端点发送数据时，通过这个引用来调用Channel相应的方法；即便当时有很多线程都在使用它也不会出现多线程问题；而且消息一定会按照顺序发送出去。
+
+    重要结论：我们在业务开发中，不要将长时间执行的耗时任务放入到EvenLoop的执行队列中，因为它将会一直阻塞该线程所对应的所有Channel上的其他执行任务，如果我们需要进行阻塞调用或是耗时的操作（实际开发中常见），那么我们就需要使用一个专门的EventExecutor（业务线程池）。
+    通常会用两种实现方式：
+	1.在ChannelHandler的回调方法中，使用自己定义的业务线程池，这样就可以实现异步调用。
+	2.借助于Netty提供的向ChannelPipeline添加ChannelHandler时调用的addLast方法来传递EventExecutor。
+
+    说明：默认情况下，调用addLast(handler)，ChannelHandler中的回调方法都是由I/O线程所执行，如果调用了ChannelPipeline addLast（EventLoopGroup group，ChannelHandler… handler);方法，那么ChannelHandler中的回调方法就是由参数中的group线程组来执行的。
+   
+    Future 与 ChannelFuture比较：
+ *
+ *                                      +---------------------------+
+ *                                      | Completed successfully    |
+ *                                      +---------------------------+
+ *                                 +---->      isDone() = true      |
+ * +--------------------------+    |    |   isSuccess() = true      |
+ * |        Uncompleted       |    |    +===========================+
+ * +--------------------------+    |    | Completed with failure    |
+ * |      isDone() = false    |    |    +---------------------------+
+ * |   isSuccess() = false    |----+---->      isDone() = true      |
+ * | isCancelled() = false    |    |    |       cause() = non-null  |
+ * |       cause() = null     |    |    +===========================+
+ * +--------------------------+    |    | Completed by cancellation |
+ *                                 |    +---------------------------+
+ *                                 +---->      isDone() = true      |
+ *                                      | isCancelled() = true      |
+ *                                      +---------------------------+
+ * 
+    ● Netty设计模式应用：工厂模式，观察者模式，适配器模式，模板模式
+
+    JDK所提供的 Future 只能通过手工方式检查执行结果，而这个操作是会阻塞的；Netty则对ChannelFuture进行了增强，通过ChannelFutureListener以回调的方式来获取执行结果，去除了手工检查的操作；值得注意的是：ChannelFutureListener的operationComplete方法是由I/O线程执行的，因此要注意的是不要在这里执行耗时操作，否则需要通过另外的线程或线程池来执行。
+
+    说明：SimpleChannelInboundHandler与ChannelInboundHandler的区别，就是channelRead0和channelRead的区别，
+SimpleChannelInboundHandler使用模板设计模式，重写了channelRead方法，并放出channelRead0方法用于实现业务，并且调用结束后会释放所持有的资源，而ChannelInboundHandler中channelRead方法不会释放所持有的资源。在服务端转发客户端数据时，使用channelRead0可能会造成转发过程中，资源被中途释放的可能，所以在使用channelRead0要额外注意。
+
+    说明：ChannelHandlerContext与Channel同名方法的区别，在Netty中有两种发送消息的方式，可以直接写到Channel中，也可以写到ChannelHandler所关联的那个ChannelHandlerContext中。对于前一种方式来说，消息会从ChannelPipeline的末尾开始流动（全部过一遍）；对于后一种方式来说，消息将从ChannelPipeline中的下一个ChannelHandler开始流动（从当前的下一个开始）。即ChannelHandlerContext处理更少Handler（下一个开始），Channel处理全部Handler（从头开始）。
+    结论：
+	1.ChannelHandlerContext与ChannelChannelHandler之间的关联关系是永远都不会发生改变的，因此对其进行缓存是没有任何问题的。
+	2.对于与Channel的同名方法来说，ChannelHandlerContext的方法将会产生更短的事件流，所以我们应该在可能得情况下利用这个特性来提升应用性能。
+    Nio：面向Buffer(缓存)编程，Buffer是一个数组结构，Channel数据读和写，都是用过Buffer来实现的。Buffer同时提供了对数据结构化的访问方式，并且可以追踪数据的读写过程，读到哪里，写到哪里，都可以追踪的。
+	Channel：可以向其写入数据或从中读取数据的对象，类似于Stream，对于Channel来说，所有数据读与写都是通过ByteBuffer进行的。Channel既能读又能写，即双向的（Linux底层操作系统的也是既能读也能写的，Channel更好反应底层操作系统真是情况）。对于Stream要么是输入流，要么是输出流。
+    使用NIO进行文件读取所涉及的步骤：
+	1.从FileInputSteam对象获取到Channel对象。
+	2.创建Buffer。
+	3.将数据从Channel中读取Buffer对象中。
+
+   ● ByteBuffer设计：0 <= mark <= position <= limit<=capacity
+	mark(标记)：ByteBuffer记录一次读写位置(历史标记)。
+	position(位置)：ByteBuffer的读写标记位置。
+	limit(界限)：ByteBuffer一次读写真实数据的末尾。将limit值设为当前的position
+	capacity(容量)：ByteBuffer一次读写数据最大容量。
+
+	flip()方法：读与写之间切换是调用。
+		1.将limit值设为当前的position。 2.将position设为0.
+
+   	clear()方法：概念上将数据清除，实际是初始化了position和limit的位置，真实数据并没别清除掉，等待下次覆盖。
+    		1.将limit值设为capacity。 2.将position值设为0。
+	
+	compact()方法：将未读数据复制到起始位置处，position移动到未读元素末尾的下一位处，腾空间，写数据
+		1.将所有未读的数据复制到buffer起始位置处。
+		2.将position设为最后第一个未读元素的后面。
+		3.将limit设为capacity。
+		4.现在buffer就准备好了，但是不会覆盖未读数据。
+
+    ● 内存模型：Java堆上的数据如果想要与外界（非Java内存模型）数据交换，必须经过native堆，在经过native外界（多一次无用数据copy到native。
+    直接内存模型（零拷贝）：直接从Java堆交换到外界，去除了native堆的过程。isDirect()方法判断是不是直接缓冲区。
+	
+    ● Netty ByteBuf类：
+    注意：通过索引来访问Byte时并不会改变真实的读索引与写索引，我们可以通过ByteBuf的readerIndex()与writerIndex()方法分别直接修改读索引与写索引。
+	
+    ● Netty ByteBuf所提供的3种缓冲区类型：
+	    1.heap buffer（堆缓冲区）。
+	    2.direct buffer（直接缓冲区）。
+	    3.composite buffer（复合缓冲区）。
+
+    ● Heap Buffer（堆缓冲区）
+	    这是最常用的类型，ByteBuf将数据存储到JVM的堆空间中，并且将实际的数据存放到byte array中来实现。
+	    优点：由于数据是存储在JVM的堆中，因此可以快速的创建与快速的释放，并且它提供了直接访问内部字节数组的方法。
+	    缺点：每次读写数据时，都需要先将数据复制到直接缓冲区中再进行网络传输。
+
+    ● Direct Buffer（直接缓冲区）
+	    在堆之外直接分配内存空间，直接缓冲区并不会占用堆的容量空间，因为它是由操作系统在本地内存进行的数据分配。
+	    优点：在使用Socket进行数据传递时，性能非常好，因为数据直接位于操作系统的本地内存中，所以不需要从JVM将数据复制到直接缓冲区中，性能很好。
+	    缺点：因为Direct Buffer是直接在操作系统内存中，所以内存空间的分配与释放要比堆空间更加复杂，而且速度慢一些。
+   	    Netty通过提供 内存池 来解决这个问题。直接缓冲区并不支持通过 字节数组 的方式来访问数据。
+
+    ●重点：对于后端的业务消息的编解码来说，推荐使用HeapByteBuf; 对于I/O通信线程在读写缓冲区时，推荐使用DirectByteBuf。
+
+    Composite Buffer（复合缓冲区）
+
+    ● JDK的ByteBuffer与Netty的ByteBuf之间的差异比对：
+	    1.Netty的ByteBuf采用了读写索引分离的策略（readerIndex与writerIndex),一个初始化（里面尚未有任何数据）的ByteBuf的readerIndex与writerIndex值都为0；
+	    2.当读索引与写索引处于同一位置时，如果我们继续读取，那么会抛出IndexOutOfBoundsException。
+	    3.对于ByteBuf的任何读写操作都会分别单独维护读索引与写索引。maxCapacity最大容量默认的限制就是Integer.MAX_VALUE。
+	
+    ● JDK的ByteBuffer的缺点：
+	1.final byte[] hb; 这是JDK的ByteBuffer对象中用于存储数据的对象声明；可以看到，其字节数组是被声明为final的，也就是长度是固定不变的。一旦分配好后不能动态扩容与收缩；而且当待存储的数据字节很大时就很有可能出现IndexOutOfBoundException。如果要预防这个异常，那就需要在存储之前完成确定好待存储的字节大小。如果ByteBuffer的空间不足，我们只有一种解决方案：创建一个全新的ByteBuffer对象，然后再将之前的ByteBuffer中的数据复制过去，这一切操作都需要由开发者自己来手动完成。
+	2.ByteBuffer只使用一个position指针来标记位置信息，在进行读写切换时就需要调用flip方法或者是rewind方法，使用起来很不方便。
+    ● Netty的ByteBuf优点:
+	1.存储字节的数组是动态的，其最大值默认是Integer.MAXW_VALUE。这里的动态性是体现在write方法中，write方法在执行时会判断buffer容量，如果不足则自动扩容。
+	2.ByteBuf的读写索引是完全分开的，使用起来就很方便。
+
+    自旋锁
+    ● AtomicIntegerFiledUpdater要点总结：
+	1.更新器更新的必须是int类型变量，不能是其包装类型。
+	2.更新器更新的必须是volatile类型变量，确保线程之间共享变量时的立即可见性。
+	3.变量不能是static的，必须要是实例变量。因为Unsafe.objectFiledOffset()方法不支持静态变量（CAS操作本质上是通过对象实例的偏移量来直接赋值）。
+	4.更新器只能修改它可见范围内的变量，因为更新器是通过反射来得到这个变量，如果变量不可见就会报错。
+    如果要更新的变量时包装类型，那么可以使用AtomicReferenceFiledUpdater来进行更新。
+
+    ● Netty为什么使用AtomicIntegerFiledUpdater做原子更新？
+	答：Netty如果每个ByteBuf（每个ByteBuf都有一个引用计数）中都使用AtomicInteger更新也是可以的，但是ByteBuf在Netty应用广泛，每个ByteBuf都生成一个AtomicInteger对象，对性能有一定的损耗，而AtomicIntegerFiledUpdater是对Integer的一个封装，Netty将AtomicIntegerFiledUpdater作为一个静态全局变量来使用，解决了所有ByteBuf引用AtomicInteger对象多的问题，通过refCnt一个值来控制所有引用计数。
+    ByteBuf的引用计数的引用与释放销毁：开始的对象负责引用，最后一个引用这个ByteBuf的对象负责销毁引用计数。
+    ● Netty处理器重要概念：
+	1.Netty的处理器可以分为两类：入站处理器 出站处理器
+	2.入站处理器的顶层是ChannelInboundHandler，出站处理器的顶层是ChannelOutboundHandler。
+	3.数据处理时常用的各种编解码器本质上都都是处理器。
+	4.编解码器：无论我们向网络中写入的数据是什么类型（int，char，String，二进制等），数据在网络中传递时，其都是以字节流的形式呈现的；将数据由原本的形式转换为字节流的操作成为编码（encode），将数据由字节流转换为他原本的格式或是其他格式的操作称为解码（decode），编解码统一称为codec。
+	5.编码：本质上是一种出站处理器；因此编码一定是一种ChannelOutboundHandler。
+	6.解码：本质上是一种入站处理器；因此解码一定是一种ChannelInboundHandler。
+	7.在Netty中，编码器通常以XXXEncoder命名；解码器通常以XXXDecoder命名。
+    ● 关于Netty编码器的重要结论：
+	1.无论是编码器还是解码器，其所接收的消息类型必须要与待处理的参数类型一致，否则该编码器或解码器并不会被执行。
+	2.在解码器进行数据解码时，一定要记得判断缓冲（ByteBuf）中的数据是否足够，否则将会产生一些问题。
+	  例子：（in.readableBytes()>=8 [long] 或者 in.readableBytes()>4 [int])
+    ● TCP粘包与拆包。
+	
+	如果对于自定义协议没有做过任何处理，那么在TCP粘包和拆包过程肯定会出现问题。
+   
+    ———2019.04.27 end.
+
+   二、Protobuf与Thrift
+	Thrift传输格式：
+	    TBinaryProtocol —- 二进制格式
+	    TCompactProtocol —- 压缩格式（推荐，二进制压缩，效率高）
+	    TJSONProtocol —- JSON格式（文本格式，没有压缩效率低）
+	    TSimpleJSONProtocol —- 提供JSON只写协议，生成的文件很容易通过脚本语言解析（没有模板类信息，不能回传结构数据）
+	    TDebugProtocol —- 使用易懂的可读的文件格式（调试使用）
+
+	Thrift数据传输方式：
+	    TSocket — 阻塞试Socket（效率最低，类比serversocket）
+	    TFramedTransport - 以frame为单位进行传输，非阻塞式服务中使用（数据切分成frame传输）
+	    TFileTransport - 以文件形式进行传输
+	    TMemoryTransport - 将内存用于I/O.Java实现时内部实际使用了简单的ByteArrayOutputStream
+	    TZlibTransport - 使用Zlib进行压缩，与其他传输方式联合使用。当前无Java实现
+	
+	Thrift支持的服务模型：
+	    TSimpleServer - 简单的单线程服务模型，常用于测试
+	    TThreadPoolServer - 多线程服务模型，使用标准的阻塞式IO
+	    TNonblockingServer - 多线程服务模型，使用非阻塞式IO（需使用TFrame的Transport数据传输方式）
+	    THsHaServer - THsHa引入了线程池去处理，其模型把读写任务放到线程池中处理，Half-sync/Half-async的处理模式，
+			   Half-async是在处理IO事件上（accept/read/write oi)，Half-sync用于handler对rpc的同步处理
+	    
+   三、Goodle的gRPC
+	
