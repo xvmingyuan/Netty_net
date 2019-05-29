@@ -178,5 +178,5 @@ SimpleChannelInboundHandler使用模板设计模式，重写了channelRead方法
 	    THsHaServer - THsHa引入了线程池去处理，其模型把读写任务放到线程池中处理，Half-sync/Half-async的处理模式，
 			   Half-async是在处理IO事件上（accept/read/write oi)，Half-sync用于handler对rpc的同步处理
 	    
-   三、Goodle的gRPC
+   三、Goodle的gRPC(未完待续)
 	
