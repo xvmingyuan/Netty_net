@@ -1,5 +1,5 @@
-  
- 一、Nio与Netty
+
+   一、Nio与Netty
 
     ● Reactor模式的角色构成（Reactor模式一共有5种角色构成）
 	1.Handler（句柄或描述符）：本质上表示一种资源，是由操作系统提供的，该资源用于表示一个个的事件，比如说文件描述符，或是针对网络编程中的Socket描述符。事件既可以来自外部，也可以来自内部；外部事件比如说客户端的连接请求，客户端发送过来数据等；
@@ -177,6 +177,19 @@ SimpleChannelInboundHandler使用模板设计模式，重写了channelRead方法
 	    TNonblockingServer - 多线程服务模型，使用非阻塞式IO（需使用TFrame的Transport数据传输方式）
 	    THsHaServer - THsHa引入了线程池去处理，其模型把读写任务放到线程池中处理，Half-sync/Half-async的处理模式，
 			   Half-async是在处理IO事件上（accept/read/write oi)，Half-sync用于handler对rpc的同步处理
-	    
-   三、Goodle的gRPC(未完待续)
+
+   三、Goodle的gRPC
+    gRPC传输类型:
+        HTTP2
+        TCP(socket)
+    gRPC服务类型:
+        同步
+        异步
+
+    gRPC数据传输方式:
+        对象数据 <-->  对象数据
+        对象数据 <-->  流数据
+        流数据   <-->  对象数据
+        流数据   <-->  流数据
+
 	
