@@ -1,3 +1,4 @@
+// 基于thrift实现RPC通信的协议文件, 实现请见java/thrift
 namespace java thrift.generated
 namespace py py.thrift.generated
 

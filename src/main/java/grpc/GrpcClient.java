@@ -125,15 +125,15 @@ public class GrpcClient {
 
     public static void main(String[] args) throws Exception {
         // 同步
-//        GrpcClient client = new GrpcClient("127.0.0.1", 8899);
-//        client.setName("客户端张三");
+        GrpcClient client = new GrpcClient("127.0.0.1", 8899);
+        client.setName("Java客户端张三");
 //        client.setAge(22);
-//        client.shutdown();
+        client.shutdown();
         // 异步
-        GrpcClient client1 = new GrpcClient("127.0.0.1", 8899, 2);
-//        client1.setAgeByStreamWrapper(23);
-        client1.BiTalkByStream();
-        client1.shutdown();
+//        GrpcClient client1 = new GrpcClient("127.0.0.1", 8899, 2);
+////        client1.setAgeByStreamWrapper(23);
+//        client1.BiTalkByStream();
+//        client1.shutdown();
     }
 
 }

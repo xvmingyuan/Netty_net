@@ -178,13 +178,16 @@ SimpleChannelInboundHandler使用模板设计模式，重写了channelRead方法
 	    THsHaServer - THsHa引入了线程池去处理，其模型把读写任务放到线程池中处理，Half-sync/Half-async的处理模式，
 			   Half-async是在处理IO事件上（accept/read/write oi)，Half-sync用于handler对rpc的同步处理
 
-   三、Goodle的gRPC
+   三、Goodle的gRPC:
+
     gRPC传输类型:
+        protobuffer 序列化协议(proto3)
         HTTP2
         TCP(socket)
+
     gRPC服务类型:
         同步
-        异步
+        异步<Iterate>
 
     gRPC数据传输方式:
         对象数据 <-->  对象数据
@@ -192,4 +195,27 @@ SimpleChannelInboundHandler使用模板设计模式，重写了channelRead方法
         流数据   <-->  对象数据
         流数据   <-->  流数据
 
-	
+	四、Thrift与gRPC的区别:
+	    0.二者都支持多语言环境下编写(Java Python C++ GO Node etc.)
+        1.thirf编译器是thrift
+          gRPC的编译器是基于protoc的gradle或者maven插件
+        2.thrift的消息关键字是struct
+          gRPC的消息关键字是message
+        3.thrift对service的方法不需要加关键字，但是需要给出参数名  
+          grpc需要加rpc的关键字，而不需要加参数名（但是需要参数类型，外加大括号），而且需要用returns标记返回类型，再加上大括号；而thrift则跟写普通java类差不多，只需要标记参数位置
+        4.thrift对生成的service的实现使用的是实现其iface接口
+          grpc则是通过继承一个叫做服务名加上ImplBase的基类。
+        5.thrift启动服务后立马进入等待客户端连接的状态
+          grpc在调用start方法启动之后还必须调用awaitTermination方法才能接收客户端连接
+        6.thrift构建一个消息可以直接使用new关键字
+          grpc跟protobuf一样需要借助它的builder对象才行
+        5.thrift参数支持原始类型
+          grpc不支持原始类型，只能传递在.proto中定义的message
+
+        ● 总结:
+          Thrift相比之下相对轻量级,结构简单,使用简洁,拆解加自己东西的时候，会更方便一些,
+          gRPC 内容交换格式:采用的protocol buffer 序列化和反序列化的速度都比thrift还要稍微好点的,
+          grpc采用了http2,比thrift私有的协议后期更好做性能优化，缓存，集群更好做些
+          最后,好文档很重要 好文档很重要 好文档很重要 重要的事说三遍
+
+

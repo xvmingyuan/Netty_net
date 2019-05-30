@@ -1,5 +1,5 @@
+// 基于netty实现RPC通信的协议文件, 实现请见java/netty/sixthDemo
 syntax="proto2";
-
 package protobuf;
 
 option optimize_for = SPEED;

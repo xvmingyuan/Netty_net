@@ -1,5 +1,5 @@
+// 基于gPRC实现RPC通信的协议文件, 实现请见java/grpc 和 java/proto
 syntax = "proto3";
-
 package proto;
 
 option java_package = "proto";
